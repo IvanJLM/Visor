@@ -69,10 +69,22 @@ final class ImageLoader: @unchecked Sendable {
         return (have >= longSide || hit.isFullResolution) ? hit : nil
     }
 
+    /// True when the slot already holds `url` with enough pixels.
+    private func hasPrefetched(_ url: URL, longSide: Int) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard let hit = prefetched, hit.info.url == url else { return false }
+        return max(hit.image.width, hit.image.height) >= longSide || hit.isFullResolution
+    }
+
     private func storePrefetched(_ image: DecodedImage) {
         lock.lock(); defer { lock.unlock() }
         prefetched = image
     }
+
+    #if DEBUG
+    /// Waits until every decode already queued has run (tests only).
+    func waitUntilIdle() { queue.sync {} }
+    #endif
 
     #if VISOR_BENCH
     var debugGeneration: Int { lock.lock(); defer { lock.unlock() }; return generation }
@@ -120,9 +132,13 @@ final class ImageLoader: @unchecked Sendable {
             autoreleasepool {
                 guard let source = ImageDecoder.source(for: request.url),
                       let info = ImageDecoder.info(for: request.url, source: source, checkGainMap: request.wantsHDR),
-                      !info.isAnimated,
-                      let decoded = ImageDecoder.decode(source: source, info: info,
-                                                        maxPixel: request.targetLongSide(for: info),
+                      !info.isAnimated
+                else { return }
+                // Focus changes and zoom refinements ask again for the same
+                // neighbour: decode it only once.
+                let longSide = request.targetLongSide(for: info)
+                guard !hasPrefetched(request.url, longSide: longSide),
+                      let decoded = ImageDecoder.decode(source: source, info: info, maxPixel: longSide,
                                                         wantsHDR: request.wantsHDR,
                                                         screenSpace: request.screenSpace)
                 else { return }
