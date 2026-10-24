@@ -10,6 +10,8 @@ struct ImageInfo {
     let pixelHeight: Int
     let isAnimated: Bool
     let hasGainMap: Bool
+    /// How the stored pixels must be turned to show the image upright (EXIF).
+    var storedOrientation = ViewOrientation.identity
 
     var longSide: Int { max(pixelWidth, pixelHeight) }
 }
@@ -49,7 +51,7 @@ enum ImageDecoder {
               width > 0, height > 0
         else { return nil }
         let orientation = (props[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1
-        if orientation >= 5 { swap(&width, &height) }
+        if orientation >= 5 && orientation <= 8 { swap(&width, &height) }
 
         let type = (CGImageSourceGetType(source) as String?) ?? ""
         let animated = CGImageSourceGetCount(source) > 1 && animatableTypes.contains(type)
@@ -59,7 +61,8 @@ enum ImageDecoder {
             gainMap = CGImageSourceCopyAuxiliaryDataInfoAtIndex(source, 0, kCGImageAuxiliaryDataTypeISOGainMap) != nil
                 || CGImageSourceCopyAuxiliaryDataInfoAtIndex(source, 0, kCGImageAuxiliaryDataTypeHDRGainMap) != nil
         }
-        return ImageInfo(url: url, pixelWidth: width, pixelHeight: height, isAnimated: animated, hasGainMap: gainMap)
+        return ImageInfo(url: url, pixelWidth: width, pixelHeight: height, isAnimated: animated, hasGainMap: gainMap,
+                         storedOrientation: ViewOrientation(exif: orientation))
     }
 
     /// Decodes the image with its long side at most `maxPixel` pixels, keeping
@@ -69,14 +72,20 @@ enum ImageDecoder {
     /// image; see `owned(_:screenSpace:)`.
     static func decode(source: CGImageSource, info: ImageInfo, maxPixel: Int, wantsHDR: Bool,
                        screenSpace: CGColorSpace?) -> DecodedImage? {
+        #if DEBUG
+        decodeCount.add()
+        #endif
         let target = max(1, min(maxPixel, info.longSide, maxSide))
+        let decodeHDR = wantsHDR && info.hasGainMap
+        if target >= info.longSide && !decodeHDR {
+            return decodeFullSize(source: source, info: info, screenSpace: screenSpace)
+        }
         var options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
             kCGImageSourceThumbnailMaxPixelSize: target,
             kCGImageSourceShouldCacheImmediately: true,
         ]
-        let decodeHDR = wantsHDR && info.hasGainMap
         if decodeHDR {
             options[kCGImageSourceDecodeRequest] = kCGImageSourceDecodeToHDR
         }
@@ -87,6 +96,30 @@ enum ImageDecoder {
         return DecodedImage(info: info, image: image, isHDR: isHDR)
     }
 
+    /// Every pixel of the file, without asking ImageIO for a full-size
+    /// "thumbnail": that path decodes the image and then makes a scaled copy
+    /// of the same size, so with Visor's own copy three bitmaps of the whole
+    /// image existed at once. Here the decoded pixels go straight into
+    /// Visor's copy, turned upright on the way (EXIF orientation).
+    private static func decodeFullSize(source: CGImageSource, info: ImageInfo, screenSpace: CGColorSpace?) -> DecodedImage? {
+        guard let raw = CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCache: false] as CFDictionary)
+        else { return nil }
+        let isHDR = raw.colorSpace.map { CGColorSpaceUsesITUR_2100TF($0) } ?? false
+        let image = owned(raw, screenSpace: isHDR ? nil : screenSpace, orientation: info.storedOrientation)
+        return DecodedImage(info: info, image: image, isHDR: isHDR)
+    }
+
+    #if DEBUG
+    /// Number of decodes, for the tests.
+    static let decodeCount = Counter()
+    final class Counter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+        func add() { lock.lock(); count += 1; lock.unlock() }
+        var value: Int { lock.lock(); defer { lock.unlock() }; return count }
+    }
+    #endif
+
     /// Copies ImageIO's bitmap into one Visor owns, pixel for pixel.
     ///
     /// 8-bit images are converted to the display's own color space, the same
@@ -96,16 +129,20 @@ enum ImageDecoder {
     /// image, which the system then keeps cached and resident. Higher bit
     /// depths and HDR keep their own color space and precision. CMYK, Lab and
     /// indexed images always become RGB.
-    static func owned(_ image: CGImage, screenSpace: CGColorSpace?) -> CGImage {
+    /// `orientation` turns the pixels upright on the way (only needed when
+    /// ImageIO has not already done it).
+    static func owned(_ image: CGImage, screenSpace: CGColorSpace?, orientation: ViewOrientation = .identity) -> CGImage {
+        let (transform, width, height) = orientation.drawTransform(width: image.width, height: image.height)
         if let screenSpace, image.bitsPerComponent <= 8, screenSpace.model == .rgb,
-           let context = CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: 0,
+           let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
                                    space: screenSpace,
                                    bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) {
             context.interpolationQuality = .none
+            context.concatenate(transform)
             context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
             if let converted = context.makeImage() { return converted }
         }
-        return redraw(image, width: image.width, height: image.height, transform: .identity) ?? image
+        return redraw(image, width: width, height: height, transform: transform) ?? image
     }
 
     /// Draws `image` into a new bitmap of the given size, after `transform`.
@@ -174,6 +211,23 @@ struct ViewOrientation: Equatable {
     static let flipHorizontal = ViewOrientation(quarterTurns: 0, mirrored: true)
     static let flipVertical = ViewOrientation(quarterTurns: 2, mirrored: true)
 
+    /// The transform that draws a `width` × `height` bitmap in this
+    /// orientation into a Core Graphics context (y up), with the size of
+    /// that context.
+    func drawTransform(width: Int, height: Int) -> (CGAffineTransform, Int, Int) {
+        if isIdentity { return (.identity, width, height) }
+        let outW = swapsAxes ? height : width
+        let outH = swapsAxes ? width : height
+        // Build it from the output back: move to the centre of the output,
+        // turn (clockwise on screen is a negative angle with y up), mirror,
+        // move back.
+        var t = CGAffineTransform(translationX: CGFloat(outW) / 2, y: CGFloat(outH) / 2)
+        t = t.rotated(by: -CGFloat(quarterTurns) * .pi / 2)
+        if mirrored { t = t.scaledBy(x: -1, y: 1) }
+        t = t.translatedBy(x: -CGFloat(width) / 2, y: -CGFloat(height) / 2)
+        return (t, outW, outH)
+    }
+
     /// This orientation as a transform about the image centre, in
     /// coordinates where y points down (so a positive angle is clockwise).
     var transform: CGAffineTransform {
@@ -187,5 +241,22 @@ struct ViewOrientation: Equatable {
         if yDown { return transform }
         let flip = CGAffineTransform(scaleX: 1, y: -1)
         return flip.concatenating(transform).concatenating(flip)
+    }
+}
+
+extension ViewOrientation {
+    /// The EXIF / TIFF orientation tag (1-8) as the turn that shows the
+    /// stored pixels upright.
+    init(exif: Int) {
+        switch exif {
+        case 2: self.init(quarterTurns: 0, mirrored: true)
+        case 3: self.init(quarterTurns: 2, mirrored: false)
+        case 4: self.init(quarterTurns: 2, mirrored: true)
+        case 5: self.init(quarterTurns: 3, mirrored: true)
+        case 6: self.init(quarterTurns: 1, mirrored: false)
+        case 7: self.init(quarterTurns: 1, mirrored: true)
+        case 8: self.init(quarterTurns: 3, mirrored: false)
+        default: self.init()
+        }
     }
 }
