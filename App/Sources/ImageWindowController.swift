@@ -117,18 +117,18 @@ final class ImageWindowController: NSWindowController, NSWindowDelegate, NSMenuI
             preparedFor = screenSpace
             isShowingHDR = decoded.isHDR
             canvas.setImagePixelSize(CGSize(width: decoded.info.pixelWidth, height: decoded.info.pixelHeight), refit: true)
-            canvas.imageView.show(decoded.image, hdr: decoded.isHDR)
+            canvas.display(decoded.image, hdr: decoded.isHDR)
         case .animated(let info):
             self.info = info
             isShowingHDR = false
             canvas.setImagePixelSize(CGSize(width: info.pixelWidth, height: info.pixelHeight), refit: true)
-            canvas.imageView.show(nil, hdr: false)
+            canvas.display(nil, hdr: false)
             animation = AnimationPlayer(url: url) { [weak self] frame in
-                self?.canvas.imageView.show(frame, hdr: false)
+                self?.canvas.display(frame, hdr: false)
             }
         case .failed:
             info = nil
-            canvas.imageView.show(nil, hdr: false)
+            canvas.display(nil, hdr: false)
             canvas.setImagePixelSize(.zero, refit: true)
             showError()
         }
@@ -289,7 +289,7 @@ final class ImageWindowController: NSWindowController, NSWindowDelegate, NSMenuI
         loader.load(request) { [weak self] result in
             guard let self, self.currentURL == url, !self.isLoading, case .image(let decoded) = result else { return }
             let image = keptOrientation.apply(to: decoded.image) ?? decoded.image
-            self.canvas.imageView.show(image, hdr: decoded.isHDR)
+            self.canvas.display(image, hdr: decoded.isHDR)
             self.prefetchNeighbour()
         }
     }
@@ -329,7 +329,7 @@ final class ImageWindowController: NSWindowController, NSWindowDelegate, NSMenuI
         let w = orientation.swapsAxes ? info.pixelHeight : info.pixelWidth
         let h = orientation.swapsAxes ? info.pixelWidth : info.pixelHeight
         canvas.setImagePixelSize(CGSize(width: w, height: h), refit: true)
-        canvas.imageView.show(turned, hdr: isShowingHDR)
+        canvas.display(turned, hdr: isShowingHDR)
         updateTitle()
     }
 
@@ -437,7 +437,7 @@ final class ImageWindowController: NSWindowController, NSWindowDelegate, NSMenuI
             guard let self, self.currentURL == url, case .image(let decoded) = result else { return }
             self.preparedFor = space
             self.isShowingHDR = decoded.isHDR
-            self.canvas.imageView.show(kept.apply(to: decoded.image) ?? decoded.image, hdr: decoded.isHDR)
+            self.canvas.display(kept.apply(to: decoded.image) ?? decoded.image, hdr: decoded.isHDR)
             if !zoomed { self.canvas.zoomToFit() }
             self.updateTitle()
         }
@@ -454,7 +454,7 @@ final class ImageWindowController: NSWindowController, NSWindowDelegate, NSMenuI
         animation?.stop()
         animation = nil
         loader.cancelAll()
-        canvas.imageView.show(nil, hdr: false)
+        canvas.display(nil, hdr: false)
         info = nil
         onClose?(self)
     }

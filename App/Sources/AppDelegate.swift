@@ -6,6 +6,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var controllers: [ImageWindowController] = []
     /// Launched by the install script to become the default image viewer.
     private let settingDefault = CommandLine.arguments.contains("--make-default")
+    /// True while the app hosts the unit tests: no Open panel, no quitting.
+    private let hostingTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         UserDefaults.standard.register(defaults: [
@@ -38,7 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #if VISOR_BENCH
         if Benchmark.isRequested { return false }
         #endif
-        return !settingDefault
+        return !settingDefault && !hostingTests
     }
 
     func applicationOpenUntitledFile(_ sender: NSApplication) -> Bool {
@@ -47,7 +49,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Visor runs only while an image is open, so it uses no memory otherwise.
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { !settingDefault }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        !settingDefault && !hostingTests
+    }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }
 

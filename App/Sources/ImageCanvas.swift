@@ -102,6 +102,8 @@ final class ImageCanvas: NSScrollView {
         Benchmark.liveCanvases += 1
         #endif
 
+        NotificationCenter.default.addObserver(self, selector: #selector(liveMagnifyStarted),
+                                               name: NSScrollView.willStartLiveMagnifyNotification, object: self)
         NotificationCenter.default.addObserver(self, selector: #selector(liveMagnifyEnded),
                                                name: NSScrollView.didEndLiveMagnifyNotification, object: self)
     }
@@ -165,15 +167,35 @@ final class ImageCanvas: NSScrollView {
     private func setZoom(_ value: CGFloat, centeredAt point: NSPoint?) {
         let clamped = min(max(value, minMagnification), maxMagnification)
         let center = point ?? NSPoint(x: contentView.bounds.midX, y: contentView.bounds.midY)
+        // setMagnification re-tiles the view, and tile() puts the fit back
+        // while the image is fitting: leave that state first.
+        isFitting = false
         setMagnification(clamped, centeredAt: center)
         isFitting = abs(clamped - fitMagnification) < 0.0001
         notifyZoom()
     }
 
     private func notifyZoom() {
-        // An image pixel covering 3+ device pixels is shown as a sharp block.
-        imageView.setPixelated(magnification * imagePixelSize.width / CGFloat(max(1, imageView.currentImage?.width ?? 1)) >= 3)
+        updatePixelation()
         canvasDelegate?.canvasZoomChanged(self)
+    }
+
+    /// An image pixel covering 3+ device pixels is shown as a sharp block.
+    private func updatePixelation() {
+        let bitmapWidth = CGFloat(max(1, imageView.currentImage?.width ?? 1))
+        imageView.setPixelated(magnification * imagePixelSize.width / bitmapWidth >= 3)
+    }
+
+    /// Shows a bitmap of the current image (any resolution of it) and keeps
+    /// the sharp-pixels filter right for that resolution.
+    func display(_ image: CGImage?, hdr: Bool) {
+        imageView.show(image, hdr: hdr)
+        updatePixelation()
+    }
+
+    @objc private func liveMagnifyStarted(_ note: Notification) {
+        // Same as setZoom: a pinch must not be undone by tile().
+        isFitting = false
     }
 
     @objc private func liveMagnifyEnded(_ note: Notification) {
