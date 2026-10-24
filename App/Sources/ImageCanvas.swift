@@ -12,49 +12,88 @@ protocol ImageCanvasDelegate: AnyObject {
     func canvas(_ canvas: ImageCanvas, didReceiveDrop url: URL)
 }
 
+/// A layer that never animates: every change shows at once.
+private final class StillLayer: CALayer {
+    override func action(forKey event: String) -> CAAction? { nil }
+}
+
 /// Shows one bitmap in a layer. Core Animation scales it on the GPU and color
-/// matches it to the display; the view never draws on the CPU.
+/// matches it to the display; the view never draws on the CPU. The bitmap is
+/// always upright as decoded: rotating and mirroring the view is a transform
+/// of the layer, so it costs no CPU time and no extra memory.
 final class ImageLayerView: NSView {
     override var isFlipped: Bool { true }
     override var wantsUpdateLayer: Bool { true }
+
+    private let imageLayer = StillLayer()
+    private(set) var orientation = ViewOrientation.identity
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
         layerContentsRedrawPolicy = .never
-        layer?.contentsGravity = .resize
         layer?.isOpaque = false
+        imageLayer.contentsGravity = .resize
+        imageLayer.isOpaque = false
+        layer?.addSublayer(imageLayer)
+        placeImageLayer()
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     func show(_ image: CGImage?, hdr: Bool) {
-        guard let layer else { return }
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
         if #available(macOS 26.0, *) {
-            layer.preferredDynamicRange = hdr ? .high : .standard
+            imageLayer.preferredDynamicRange = hdr ? .high : .standard
         } else {
-            layer.wantsExtendedDynamicRangeContent = hdr
+            imageLayer.wantsExtendedDynamicRangeContent = hdr
         }
-        layer.contents = image
-        CATransaction.commit()
+        imageLayer.contents = image
     }
 
     var currentImage: CGImage? {
-        guard let contents = layer?.contents else { return nil }
+        guard let contents = imageLayer.contents else { return nil }
         return (contents as! CGImage)
+    }
+
+    /// Turns and mirrors the bitmap on screen. The view's frame is the image
+    /// as shown (already rotated); the layer keeps the bitmap's own shape.
+    func setOrientation(_ orientation: ViewOrientation) {
+        self.orientation = orientation
+        placeImageLayer()
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        placeImageLayer()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        placeImageLayer()
+    }
+
+    private func placeImageLayer() {
+        let size = bounds.size
+        imageLayer.bounds = CGRect(origin: .zero, size: orientation.swapsAxes ? CGSize(width: size.height, height: size.width) : size)
+        imageLayer.position = CGPoint(x: bounds.midX, y: bounds.midY)
+        // A flipped view's layer has y pointing down, but Core Animation then
+        // also flips the bitmap so it stays upright: the two cancel out, and
+        // on screen the bitmap's own space has y pointing up.
+        let yDown = (layer?.isGeometryFlipped ?? false) != imageLayer.contentsAreFlipped()
+        imageLayer.setAffineTransform(orientation.layerTransform(yDown: yDown))
     }
 
     /// Nearest-neighbour when an image pixel covers 3+ screen pixels, so
     /// zoomed-in pixels stay crisp instead of blurring.
     func setPixelated(_ pixelated: Bool) {
         let filter: CALayerContentsFilter = pixelated ? .nearest : .linear
-        if layer?.magnificationFilter != filter {
-            layer?.magnificationFilter = filter
+        if imageLayer.magnificationFilter != filter {
+            imageLayer.magnificationFilter = filter
         }
     }
+
+    var magnificationFilter: CALayerContentsFilter { imageLayer.magnificationFilter }
 }
 
 /// Keeps the image centred when it is smaller than the window.
@@ -182,8 +221,9 @@ final class ImageCanvas: NSScrollView {
 
     /// An image pixel covering 3+ device pixels is shown as a sharp block.
     private func updatePixelation() {
-        let bitmapWidth = CGFloat(max(1, imageView.currentImage?.width ?? 1))
-        imageView.setPixelated(magnification * imagePixelSize.width / bitmapWidth >= 3)
+        // Long sides, so a rotated view compares like with like.
+        let bitmapSide = CGFloat(max(1, imageView.currentImage.map { max($0.width, $0.height) } ?? 1))
+        imageView.setPixelated(magnification * max(imagePixelSize.width, imagePixelSize.height) / bitmapSide >= 3)
     }
 
     /// Shows a bitmap of the current image (any resolution of it) and keeps

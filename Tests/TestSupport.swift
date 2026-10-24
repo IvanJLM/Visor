@@ -47,5 +47,5 @@ final class CanvasFixture {
 
 extension CanvasFixture {
     /// The filter Core Animation uses to enlarge the bitmap.
-    var magnificationFilter: CALayerContentsFilter? { canvas.imageView.layer?.magnificationFilter }
+    var magnificationFilter: CALayerContentsFilter? { canvas.imageView.magnificationFilter }
 }
