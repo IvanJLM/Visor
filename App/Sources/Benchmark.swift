@@ -2,6 +2,7 @@
 import AppKit
 import Darwin
 import ImageIO
+import QuartzCore
 
 /// Stress test compiled only into benchmark builds (-D VISOR_BENCH), never into
 /// the installed app. Drives a window through a folder and logs memory and
@@ -91,13 +92,19 @@ enum Benchmark {
                 await sleep(1.0)
                 if let ops = env["VISOR_BENCH_OPS"] {
                     for op in ops.split(separator: ",") {
+                        let start = CACurrentMediaTime()
                         switch op {
                         case "actual": c.actualSize(nil)
+                        case "fit": c.zoomToFit(nil)
                         case "zoomin": c.zoomIn(nil)
                         case "right": c.rotateRight(nil)
+                        case "left": c.rotateLeft(nil)
                         case "flipH": c.flipHorizontal(nil)
+                        case "flipV": c.flipVertical(nil)
                         default: break
                         }
+                        say(String(format: "op %@: %.2f ms on the main thread, footprint %.1f MB", String(op),
+                                   (CACurrentMediaTime() - start) * 1000, footprintMB()))
                         await sleep(0.4)
                     }
                 }

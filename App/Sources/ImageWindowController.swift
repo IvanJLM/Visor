@@ -108,6 +108,7 @@ final class ImageWindowController: NSWindowController, NSWindowDelegate, NSMenuI
         animation?.stop()
         animation = nil
         orientation = .identity
+        canvas.imageView.setOrientation(.identity)
         errorLabel?.removeFromSuperview()
         errorLabel = nil
 
@@ -283,13 +284,11 @@ final class ImageWindowController: NSWindowController, NSWindowDelegate, NSMenuI
             target = needed
         }
         guard let target else { return }
-        let keptOrientation = orientation
         var request = ImageLoader.Request(url: url, viewportPixels: .zero, wantsHDR: wantsHDR, screenSpace: screenSpace)
         request.exactLongSide = target
         loader.load(request) { [weak self] result in
             guard let self, self.currentURL == url, !self.isLoading, case .image(let decoded) = result else { return }
-            let image = keptOrientation.apply(to: decoded.image) ?? decoded.image
-            self.canvas.display(image, hdr: decoded.isHDR)
+            self.canvas.display(decoded.image, hdr: decoded.isHDR)
             self.prefetchNeighbour()
         }
     }
@@ -322,14 +321,14 @@ final class ImageWindowController: NSWindowController, NSWindowDelegate, NSMenuI
     @objc func flipHorizontal(_ sender: Any?) { reorient(.flipHorizontal) }
     @objc func flipVertical(_ sender: Any?) { reorient(.flipVertical) }
 
+    /// Turns or mirrors the view on the GPU; the bitmap is not touched.
     private func reorient(_ change: ViewOrientation) {
-        guard let info, animation == nil, let current = canvas.imageView.currentImage,
-              let turned = change.apply(to: current) else { return }
+        guard let info, animation == nil, canvas.imageView.currentImage != nil else { return }
         orientation = orientation.then(change)
         let w = orientation.swapsAxes ? info.pixelHeight : info.pixelWidth
         let h = orientation.swapsAxes ? info.pixelWidth : info.pixelHeight
+        canvas.imageView.setOrientation(orientation)
         canvas.setImagePixelSize(CGSize(width: w, height: h), refit: true)
-        canvas.display(turned, hdr: isShowingHDR)
         updateTitle()
     }
 
@@ -429,7 +428,6 @@ final class ImageWindowController: NSWindowController, NSWindowDelegate, NSMenuI
         // The prefetched neighbour was prepared for the old display: drop it.
         loader.prefetchEnabled = false
         loader.prefetchEnabled = Self.focused === self
-        let kept = orientation
         let zoomed = !canvas.isFitting
         var request = ImageLoader.Request(url: url, viewportPixels: .zero, wantsHDR: wantsHDR, screenSpace: space)
         request.exactLongSide = canvas.imageView.currentImage.map { max($0.width, $0.height) }
@@ -437,7 +435,7 @@ final class ImageWindowController: NSWindowController, NSWindowDelegate, NSMenuI
             guard let self, self.currentURL == url, case .image(let decoded) = result else { return }
             self.preparedFor = space
             self.isShowingHDR = decoded.isHDR
-            self.canvas.display(kept.apply(to: decoded.image) ?? decoded.image, hdr: decoded.isHDR)
+            self.canvas.display(decoded.image, hdr: decoded.isHDR)
             if !zoomed { self.canvas.zoomToFit() }
             self.updateTitle()
         }
@@ -445,7 +443,7 @@ final class ImageWindowController: NSWindowController, NSWindowDelegate, NSMenuI
 
     #if VISOR_BENCH
     deinit { Benchmark.liveControllers -= 1 }
-    var debugFilter: String { canvas.imageView.layer?.magnificationFilter.rawValue ?? "?" }
+    var debugFilter: String { canvas.imageView.magnificationFilter.rawValue }
     var debugState: String { "current=\(currentURL?.lastPathComponent ?? "-") loading=\(isLoading) index=\(index)/\(files.count) gen=\(loader.debugGeneration)" }
     #endif
 

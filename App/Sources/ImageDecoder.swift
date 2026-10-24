@@ -123,8 +123,13 @@ enum ImageDecoder {
             context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 16, bytesPerRow: 0, space: space,
                                 bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.floatComponents.rawValue
                                     | CGBitmapInfo.byteOrder16Little.rawValue)
-        } else if highDepth {
+        } else if highDepth && space.model == .monochrome && image.alphaInfo == .none {
             context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 16, bytesPerRow: 0, space: space,
+                                bitmapInfo: CGImageAlphaInfo.none.rawValue | CGBitmapInfo.byteOrder16Little.rawValue)
+        } else if highDepth {
+            // Core Graphics has no 16-bit gray with alpha: such images become RGB.
+            let rgb = space.model == .rgb ? space : CGColorSpace(name: CGColorSpace.sRGB)!
+            context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 16, bytesPerRow: 0, space: rgb,
                                 bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder16Little.rawValue)
         } else if space.model == .monochrome && image.alphaInfo == .none {
             context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: space,
@@ -169,19 +174,18 @@ struct ViewOrientation: Equatable {
     static let flipHorizontal = ViewOrientation(quarterTurns: 0, mirrored: true)
     static let flipVertical = ViewOrientation(quarterTurns: 2, mirrored: true)
 
-    /// Returns a new bitmap of `image` shown in this orientation.
-    func apply(to image: CGImage) -> CGImage? {
-        if isIdentity { return image }
-        let w = CGFloat(image.width), h = CGFloat(image.height)
-        let outW = swapsAxes ? image.height : image.width
-        let outH = swapsAxes ? image.width : image.height
-        // Core Graphics has y pointing up, so a clockwise turn on screen is a
-        // negative angle here. Build the transform from the output back:
-        // move to the centre of the output, rotate, mirror, move back.
-        var t = CGAffineTransform(translationX: CGFloat(outW) / 2, y: CGFloat(outH) / 2)
-        t = t.rotated(by: -CGFloat(quarterTurns) * .pi / 2)
-        if mirrored { t = t.scaledBy(x: -1, y: 1) }
-        t = t.translatedBy(x: -w / 2, y: -h / 2)
-        return ImageDecoder.redraw(image, width: outW, height: outH, transform: t)
+    /// This orientation as a transform about the image centre, in
+    /// coordinates where y points down (so a positive angle is clockwise).
+    var transform: CGAffineTransform {
+        let mirror = mirrored ? CGAffineTransform(scaleX: -1, y: 1) : .identity
+        return mirror.concatenating(CGAffineTransform(rotationAngle: CGFloat(quarterTurns) * .pi / 2))
+    }
+
+    /// The transform for a layer whose geometry has y pointing down
+    /// (`yDown`) or up: a turn that is clockwise on screen either way.
+    func layerTransform(yDown: Bool) -> CGAffineTransform {
+        if yDown { return transform }
+        let flip = CGAffineTransform(scaleX: 1, y: -1)
+        return flip.concatenating(transform).concatenating(flip)
     }
 }
