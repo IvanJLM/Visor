@@ -77,6 +77,10 @@ display:
   window in front prefetches.
 - Bitmaps are prepared in the display's own color space, so Core Animation
   shows them as they are instead of keeping a converted copy of each one.
+- Rotating and flipping are a GPU transform of the layer: no new bitmap, no
+  CPU time, at any size.
+- Zooming to actual pixels decodes straight into Visor's own copy: two
+  bitmaps of the image while it decodes, then one.
 - Menus are built in code (no nib to load), there are no timers and nothing
   runs while you look at an image.
 
@@ -86,7 +90,7 @@ Stress test on 75 images (12 to 108 MP, HEIC, 16-bit PNG, GIF, HDR…):
 |---|---|
 | Next image, 3 passes over the folder | median 2.2 ms, memory flat at 33-38 MB |
 | Holding the arrow key through 300 images | 43 MB |
-| Zoom, rotate and flip on 15 images | peak 50 MB |
+| Zoom to 100 % and in, rotate and flip, on 15 images | peak 104 MB, 27 MB after fit |
 | 25 windows open | 43 MB |
 | Back to 1 window | 38 MB |
 
