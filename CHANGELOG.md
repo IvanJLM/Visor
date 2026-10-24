@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.1.0 — 2026-10-24
+
+- Zoom obeys on the first press: from "zoom to fit", Actual Size (⌘0), Zoom
+  In/Out, the mouse wheel, a pinch and the double-click used to need two tries
+  (the double-click never zoomed in).
+- Rotate and flip are now done by the GPU: instant at any size (a 108 MP
+  photo at actual pixels took a quarter of a second) and with no extra copy of
+  the image in memory. 16-bit grayscale images can be rotated.
+- Zooming to actual pixels needs a third less memory (two copies of the image
+  while decoding instead of three: 843 MB instead of 1.26 GB for 108 MP).
+- Sharp pixels past 300 % now follow the bitmap actually shown, so a photo at
+  100 % is never drawn as squares.
+- The next image is no longer decoded again when you switch back to Visor.
+- Unit tests (`./scripts/test.sh`) and CI on GitHub Actions.
+
 ## 1.0.0 — 2026-10-24
 
 First release. A native Swift/AppKit image viewer written from scratch, using
