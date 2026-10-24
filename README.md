@@ -112,6 +112,7 @@ once: it offers to become the default viewer.
 ## Development
 
 ```bash
+./scripts/test.sh                 # unit tests (Debug build)
 ./scripts/bump-version.sh minor   # or patch / major, then fill in CHANGELOG.md
 swiftc -O scripts/generate-test-images.swift -o /tmp/gen && /tmp/gen /tmp/visor-images
 ./scripts/benchmark.sh /tmp/visor-images

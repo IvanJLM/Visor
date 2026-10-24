@@ -47,6 +47,18 @@ targets:
         PRODUCT_NAME: Visor
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
+  VisorTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: Visor
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ivanjlm.visor.tests
+        GENERATE_INFOPLIST_FILE: YES
+
 schemes:
   Visor:
     build:
@@ -54,3 +66,7 @@ schemes:
         Visor: all
     run:
       config: Debug
+    test:
+      config: Debug
+      targets:
+        - VisorTests
