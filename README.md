@@ -38,6 +38,9 @@ you are not looking at an image.
 - **HDR photos** (iPhone gain maps, PQ and HLG) in real HDR on HDR displays.
 - **Copy** (⌘C), **Move to Trash** (⌘⌫), **Show in Finder** (⇧⌘R),
   **Open in Preview** (⇧⌘P), **full screen** (⌃⌘F, Esc to leave).
+- **The title bar disappears into the image**: the window buttons, the file
+  name and its position in the folder fade in while the mouse moves and out
+  two seconds after it stops. Drag a fitted image to move the window.
 - Drop an image on a window to open it there.
 
 There are no preferences, no toolbar, no slideshow and no auto-updates.

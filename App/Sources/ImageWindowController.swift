@@ -12,6 +12,7 @@ final class ImageWindowController: NSWindowController, NSWindowDelegate, NSMenuI
     var onDisplay: ((URL) -> Void)?
 
     private let canvas = ImageCanvas(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
+    private var chrome: WindowChrome!
     private let loader = ImageLoader()
 
     private(set) var currentURL: URL?
@@ -34,8 +35,11 @@ final class ImageWindowController: NSWindowController, NSWindowDelegate, NSMenuI
 
     init(cascadeFrom other: NSWindow?) {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
-                              styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                              styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                               backing: .buffered, defer: true)
+        // The image fills the whole window; the title bar floats over it.
+        window.titlebarAppearsTransparent = true
+        window.titlebarSeparatorStyle = .none
         window.appearance = NSAppearance(named: .darkAqua)
         window.isRestorable = false
         window.tabbingMode = .disallowed
@@ -46,8 +50,12 @@ final class ImageWindowController: NSWindowController, NSWindowDelegate, NSMenuI
         super.init(window: window)
         window.delegate = self
         canvas.canvasDelegate = self
-        window.contentView = canvas
+        let container = NSView(frame: canvas.frame)
+        canvas.autoresizingMask = [.width, .height]
+        container.addSubview(canvas)
+        window.contentView = container
         window.initialFirstResponder = canvas
+        chrome = WindowChrome(window: window, container: container)
         cascadeSource = other
         #if VISOR_BENCH
         Benchmark.liveControllers += 1
@@ -90,7 +98,7 @@ final class ImageWindowController: NSWindowController, NSWindowDelegate, NSMenuI
             return CGSize(width: size.width * scale, height: size.height * scale)
         }
         let visible = (NSScreen.main ?? NSScreen.screens[0]).visibleFrame
-        return CGSize(width: visible.width * 0.9 * scale, height: (visible.height * 0.9 - 32) * scale)
+        return CGSize(width: visible.width * 0.9 * scale, height: visible.height * 0.9 * scale)
     }
 
     private func show(_ url: URL) {
@@ -149,7 +157,7 @@ final class ImageWindowController: NSWindowController, NSWindowDelegate, NSMenuI
         let visible = (window.screen ?? NSScreen.main ?? NSScreen.screens[0]).visibleFrame
         var size = NSSize(width: 640, height: 480)
         if let info {
-            let maxW = visible.width * 0.9, maxH = visible.height * 0.9 - 32
+            let maxW = visible.width * 0.9, maxH = visible.height * 0.9
             let w = CGFloat(info.pixelWidth) / scale, h = CGFloat(info.pixelHeight) / scale
             let fit = min(1, maxW / w, maxH / h)
             size = NSSize(width: max(window.contentMinSize.width, (w * fit).rounded()),
@@ -165,6 +173,7 @@ final class ImageWindowController: NSWindowController, NSWindowDelegate, NSMenuI
         canvas.zoomToFit()
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(canvas)
+        chrome.show()
     }
 
     private func showError() {
@@ -403,10 +412,15 @@ final class ImageWindowController: NSWindowController, NSWindowDelegate, NSMenuI
 
     func windowWillEnterFullScreen(_ notification: Notification) {
         canvas.backgroundColor = .black
+        chrome.suspend()
     }
 
     func windowWillExitFullScreen(_ notification: Notification) {
         canvas.backgroundColor = NSColor(calibratedWhite: 0.11, alpha: 1)
+    }
+
+    func windowDidExitFullScreen(_ notification: Notification) {
+        chrome.resume()
     }
 
     /// Bitmaps are prepared for one display (color profile, HDR), so moving
@@ -443,11 +457,14 @@ final class ImageWindowController: NSWindowController, NSWindowDelegate, NSMenuI
 
     #if VISOR_BENCH
     deinit { Benchmark.liveControllers -= 1 }
+    var debugChrome: String { "chromeShown=\(chrome.isShown) timer=\(chrome.hideTimer != nil) titlebarAlpha=\(window?.standardWindowButton(.closeButton)?.superview?.alphaValue ?? -1) insetTop=\(canvas.contentInsets.top)" }
+    func debugShowChrome() { chrome.show() }
     var debugFilter: String { canvas.imageView.magnificationFilter.rawValue }
     var debugState: String { "current=\(currentURL?.lastPathComponent ?? "-") loading=\(isLoading) index=\(index)/\(files.count) gen=\(loader.debugGeneration)" }
     #endif
 
     func windowWillClose(_ notification: Notification) {
+        chrome.stop()
         refineTimer?.invalidate()
         animation?.stop()
         animation = nil

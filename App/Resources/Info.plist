@@ -100,8 +100,6 @@
 	<string>© 2026 IvanJLM. MIT License.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
-	<key>NSSupportsAutomaticTermination</key>
-	<true/>
 	<key>NSSupportsSuddenTermination</key>
 	<true/>
 </dict>

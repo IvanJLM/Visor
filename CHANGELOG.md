@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.0 — 2026-10-25
+
+- The title bar disappears into the image, as in Vids: the image fills the
+  whole window, and the window buttons, the file name and its position in the
+  folder fade in while the mouse moves and out two seconds after it stops.
+  Nothing runs while the mouse is still.
+- With no title bar to grab, dragging a fitted image moves the window
+  (a zoomed-in image still pans).
+- macOS can no longer quit Visor on its own while its only window is
+  minimized or on another space (automatic termination is off).
+
 ## 1.1.0 — 2026-10-24
 
 - Zoom obeys on the first press: from "zoom to fit", Actual Size (⌘0), Zoom

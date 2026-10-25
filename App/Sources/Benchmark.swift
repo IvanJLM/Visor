@@ -112,6 +112,7 @@ enum Benchmark {
                         case "right": c.rotateRight(nil)
                         case "left": c.rotateLeft(nil)
                         case "flipH": c.flipHorizontal(nil)
+                        case "chrome": c.debugShowChrome()
                         case "flipV": c.flipVertical(nil)
                         default: break
                         }
@@ -122,7 +123,11 @@ enum Benchmark {
                 }
                 await sleep(0.5)
                 say("WINDOW \(c.window?.windowNumber ?? 0) \(c.window?.subtitle ?? "") filter=\(c.debugFilter)"
-                    + String(format: " footprint=%.1fMB peak=%.1fMB", footprintMB(), peakFootprintMB()))
+                    + String(format: " footprint=%.1fMB peak=%.1fMB ", footprintMB(), peakFootprintMB()) + c.debugChrome)
+                if env["VISOR_BENCH_CHROME"] != nil {
+                    await sleep(2.8)
+                    say("after idle: \(c.debugChrome)")
+                }
                 if let png = env["VISOR_BENCH_PNG"], let view = c.window?.contentView {
                     let size = view.bounds.size
                     let scale = c.window?.backingScaleFactor ?? 1

@@ -136,6 +136,9 @@ final class ImageCanvas: NSScrollView {
         drawsBackground = true
         backgroundColor = NSColor(calibratedWhite: 0.11, alpha: 1)
         usesPredominantAxisScrolling = false
+        // The title bar floats over the image, so no space is kept for it.
+        automaticallyAdjustsContentInsets = false
+        contentInsets = NSEdgeInsetsZero
         registerForDraggedTypes([.fileURL])
         #if VISOR_BENCH
         Benchmark.liveCanvases += 1
@@ -282,6 +285,9 @@ final class ImageCanvas: NSScrollView {
         if canPan {
             dragOrigin = event.locationInWindow
             NSCursor.closedHand.push()
+        } else if window?.styleMask.contains(.fullScreen) == false {
+            // With no title bar to grab, dragging a fitted image moves the window.
+            window?.performDrag(with: event)
         }
     }
 
