@@ -41,6 +41,8 @@ you are not looking at an image.
 - **The title bar disappears into the image**: the window buttons, the file
   name and its position in the folder fade in while the mouse moves and out
   two seconds after it stops. Drag a fitted image to move the window.
+- **Remembers the window**: the next image opens where you last left the
+  window, at the same size.
 - Drop an image on a window to open it there.
 
 There are no preferences, no toolbar, no slideshow and no auto-updates.
