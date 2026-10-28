@@ -32,6 +32,9 @@ final class ImageWindowController: NSWindowController, NSWindowDelegate, NSMenuI
     private var direction = 1
     private var hasAppeared = false
     private weak var cascadeSource: NSWindow?
+    /// Where the last window was closed, if Visor remembers one.
+    private let restoredFrame = WindowFrameMemory.restored()
+    private var isChangingFullScreen = false
 
     init(cascadeFrom other: NSWindow?) {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
@@ -90,12 +93,15 @@ final class ImageWindowController: NSWindowController, NSWindowDelegate, NSMenuI
     private var backingScale: CGFloat { window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2 }
 
     /// Pixel area the image may fill: the window's content area once it is on
-    /// screen, otherwise the largest window that fits the screen.
+    /// screen, otherwise the remembered window or the largest that fits the screen.
     private var viewportPixels: CGSize {
         let scale = backingScale
         if hasAppeared {
             let size = canvas.contentSize
             return CGSize(width: size.width * scale, height: size.height * scale)
+        }
+        if let restoredFrame {
+            return CGSize(width: restoredFrame.width * scale, height: restoredFrame.height * scale)
         }
         let visible = (NSScreen.main ?? NSScreen.screens[0]).visibleFrame
         return CGSize(width: visible.width * 0.9 * scale, height: visible.height * 0.9 * scale)
@@ -153,6 +159,26 @@ final class ImageWindowController: NSWindowController, NSWindowDelegate, NSMenuI
         guard let window else { return }
         hasAppeared = true
         takeFocus()
+        if let restoredFrame {
+            // Same place and size as the last window the user closed.
+            window.setFrame(restoredFrame, display: false)
+            if let other = cascadeSource, other.isVisible {
+                window.setFrameTopLeftPoint(window.cascadeTopLeft(from: NSPoint(x: other.frame.minX, y: other.frame.maxY)))
+                if let fitted = WindowFrameMemory.fitted(window.frame, into: NSScreen.screens.map(\.visibleFrame)) {
+                    window.setFrame(fitted, display: false)
+                }
+            }
+        } else {
+            sizeToImage(window)
+        }
+        canvas.zoomToFit()
+        window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(canvas)
+        chrome.show()
+    }
+
+    /// First window ever: as large as the image, up to 90 % of the screen.
+    private func sizeToImage(_ window: NSWindow) {
         let scale = backingScale
         let visible = (window.screen ?? NSScreen.main ?? NSScreen.screens[0]).visibleFrame
         var size = NSSize(width: 640, height: 480)
@@ -170,10 +196,6 @@ final class ImageWindowController: NSWindowController, NSWindowDelegate, NSMenuI
         if cascadeSource == nil || !visible.contains(window.frame) {
             window.center()
         }
-        canvas.zoomToFit()
-        window.makeKeyAndOrderFront(nil)
-        window.makeFirstResponder(canvas)
-        chrome.show()
     }
 
     private func showError() {
@@ -411,16 +433,51 @@ final class ImageWindowController: NSWindowController, NSWindowDelegate, NSMenuI
     }
 
     func windowWillEnterFullScreen(_ notification: Notification) {
+        isChangingFullScreen = true
         canvas.backgroundColor = .black
         chrome.suspend()
     }
 
+    func windowDidEnterFullScreen(_ notification: Notification) {
+        isChangingFullScreen = false
+    }
+
+    func windowDidFailToEnterFullScreen(_ window: NSWindow) {
+        isChangingFullScreen = false
+    }
+
     func windowWillExitFullScreen(_ notification: Notification) {
+        isChangingFullScreen = true
         canvas.backgroundColor = NSColor(calibratedWhite: 0.11, alpha: 1)
     }
 
     func windowDidExitFullScreen(_ notification: Notification) {
+        isChangingFullScreen = false
         chrome.resume()
+        rememberFrame()
+    }
+
+    func windowDidFailToExitFullScreen(_ window: NSWindow) {
+        isChangingFullScreen = false
+    }
+
+    // The next window opens where this one was last moved or resized to.
+    func windowDidMove(_ notification: Notification) {
+        rememberFrame()
+    }
+
+    func windowDidResize(_ notification: Notification) {
+        if window?.inLiveResize == false { rememberFrame() }
+    }
+
+    func windowDidEndLiveResize(_ notification: Notification) {
+        rememberFrame()
+    }
+
+    private func rememberFrame() {
+        guard hasAppeared, !isChangingFullScreen, let window, !window.styleMask.contains(.fullScreen),
+              !window.isMiniaturized else { return }
+        WindowFrameMemory.save(window.frame)
     }
 
     /// Bitmaps are prepared for one display (color profile, HDR), so moving
@@ -464,6 +521,7 @@ final class ImageWindowController: NSWindowController, NSWindowDelegate, NSMenuI
     #endif
 
     func windowWillClose(_ notification: Notification) {
+        rememberFrame()
         chrome.stop()
         refineTimer?.invalidate()
         animation?.stop()

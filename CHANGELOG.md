@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.0 — 2026-10-28
+
+- Visor remembers the last window: the next image opens where that window
+  was, at the same size, whether it is the same file or another one. A second
+  window opened at the same time cascades from the first at that size.
+- The very first window still fits the image. A window saved on a display
+  that is no longer connected opens whole on the main one.
+- Full screen never becomes the remembered size.
+
 ## 1.2.0 — 2026-10-25
 
 - The title bar disappears into the image, as in Vids: the image fills the
