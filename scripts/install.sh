@@ -16,6 +16,8 @@ fi
 xcodegen generate --quiet
 xcodebuild -project Visor.xcodeproj -scheme Visor -configuration Release \
   -derivedDataPath build/DD -quiet build
+# Keep this build out of Finder's "Open With" menu.
+./scripts/forget-builds.sh >/dev/null
 
 APP="build/DD/Build/Products/Release/Visor.app"
 if [[ -n "$IDENTITY" ]]; then

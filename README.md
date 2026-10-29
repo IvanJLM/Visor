@@ -130,6 +130,11 @@ swiftc -O scripts/generate-test-images.swift -o /tmp/gen && /tmp/gen /tmp/visor-
 The benchmark builds a separate copy of Visor with the stress test compiled
 in (`-D VISOR_BENCH`); the installed app never contains it.
 
+Xcode registers every app it builds with macOS, so each build would show up
+as one more Visor in Finder's "Open With" menu. The scripts above clean that
+up after building; after a build made any other way (Xcode, a scratch
+folder), run `./scripts/forget-builds.sh`.
+
 ## License
 
 [MIT](LICENSE). Use it for anything you like.
