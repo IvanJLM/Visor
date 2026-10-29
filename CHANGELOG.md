@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.1 — 2026-10-29
+
+- Finder's "Open With" lists Visor only once. Every build Xcode made
+  (Release, test, benchmark and scratch copies) was registered as one more
+  Visor; install.sh, package.sh, test.sh and benchmark.sh now unregister
+  every copy except /Applications/Visor.app through the new
+  scripts/forget-builds.sh.
+
 ## 1.3.0 — 2026-10-28
 
 - Visor remembers the last window: the next image opens where that window
